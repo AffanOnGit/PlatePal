@@ -145,10 +145,10 @@ def get_inception_features(images: torch.Tensor, device: str = "cpu", batch_size
     Images should be (N, 3, H, W) tensors in [0, 1] range.
     They will be resized to 299x299 internally.
     """
-    from torchvision.models import inception_v3
+    from torchvision.models import inception_v3, Inception_V3_Weights
     import torch.nn.functional as F
 
-    model = inception_v3(pretrained=True, transform_input=False).to(device)
+    model = inception_v3(weights=Inception_V3_Weights.DEFAULT, transform_input=False).to(device)
     model.eval()
 
     # Remove the final classification layer → get 2048-dim features
@@ -178,6 +178,11 @@ def compute_fid(real_features: np.ndarray, fake_features: np.ndarray) -> float:
     mu_f = np.mean(fake_features, axis=0)
     sigma_r = np.cov(real_features, rowvar=False)
     sigma_f = np.cov(fake_features, rowvar=False)
+
+    # Regularize for numerical stability (prevents NaN with small batch sizes)
+    eps = 1e-6
+    sigma_r += eps * np.eye(sigma_r.shape[0])
+    sigma_f += eps * np.eye(sigma_f.shape[0])
 
     diff = mu_r - mu_f
     covmean, _ = sqrtm(sigma_r @ sigma_f, disp=False)

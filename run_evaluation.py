@@ -11,6 +11,9 @@ Usage:
         --text-model  checkpoints/text_model/best \
         --image-model checkpoints/dcgan/generator_final.pth \
         --food101-h5  data/raw/food_c101_n10099_r64x64x3.h5
+
+Quick evaluation (50 samples):
+    python run_evaluation.py --quick
 """
 
 import os
@@ -18,6 +21,7 @@ import sys
 import argparse
 import json
 from pathlib import Path
+from datetime import datetime
 
 import torch
 import numpy as np
@@ -59,13 +63,16 @@ def evaluate_text(args):
     print(" TEXT MODEL EVALUATION")
     print("=" * 60)
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     ckpt = args.text_model if os.path.isdir(args.text_model) else None
-    gen = RecipeGenerator(checkpoint_dir=ckpt, device=args.device)
+    gen = RecipeGenerator(checkpoint_dir=ckpt, device=device)
+
+    prompts = TEST_PROMPTS[:args.num_samples] if args.quick else TEST_PROMPTS
 
     # Generate recipes
     generated = []
     coverages = []
-    for prompt in TEST_PROMPTS:
+    for prompt in prompts:
         recipe = gen.generate_recipe(prompt, max_length=256)
         generated.append(recipe)
         cov = ingredient_coverage(prompt, recipe)
@@ -79,7 +86,7 @@ def evaluate_text(args):
 
     # Evaluate text quality
     results = evaluate_text_quality(
-        gen.model, gen.tokenizer, generated, device=args.device
+        gen.model, gen.tokenizer, generated, device=device
     )
     results["avg_ingredient_coverage"] = float(avg_coverage)
 
@@ -93,7 +100,7 @@ def evaluate_images(args):
     print(" IMAGE MODEL EVALUATION")
     print("=" * 60)
 
-    device = args.device
+    device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Load generator
     gen = Generator(z_dim=100, embed_dim=512).to(device)
@@ -106,14 +113,19 @@ def evaluate_images(args):
 
     # Generate fake images
     embedder = get_embedder(use_clip=True, device=device)
-    n_samples = 100
+    n_samples = args.num_samples if args.quick else 100
     fake_images = []
 
     print(f"  Generating {n_samples} sample images...")
     with torch.no_grad():
         for i in range(n_samples):
             z = torch.randn(1, 100, device=device)
-            embed = torch.randn(1, 512, device=device)  # random conditioning
+            # Use a real CLIP embedding from a food description
+            prompt_idx = i % len(TEST_PROMPTS)
+            embed = embedder.embed_recipe(
+                title=TEST_PROMPTS[prompt_idx].split(",")[0].strip(),
+                ingredients=TEST_PROMPTS[prompt_idx],
+            )
             img = gen(z, embed)
             img = (img + 1) / 2  # [-1,1] → [0,1]
             fake_images.append(img)
@@ -142,9 +154,13 @@ def main():
     parser.add_argument("--text-model",  type=str, default="checkpoints/text_model/best")
     parser.add_argument("--image-model", type=str, default="checkpoints/dcgan/generator_final.pth")
     parser.add_argument("--food101-h5",  type=str, default="data/raw/food_c101_n10099_r64x64x3.h5")
-    parser.add_argument("--device",      type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--output",      type=str, default="evaluation_report.json")
+    parser.add_argument("--quick",       action="store_true", help="Run with fewer samples for fast iteration")
+    parser.add_argument("--num-samples", type=int, default=5, help="Number of samples when --quick is set")
+    parser.add_argument("--output-dir",  type=str, default="evaluation")
     args = parser.parse_args()
+
+    # Ensure output dir
+    os.makedirs(args.output_dir, exist_ok=True)
 
     # Run evaluations
     text_results = evaluate_text(args)
@@ -154,11 +170,13 @@ def main():
     report = generate_report(text_results, image_results)
     print(report)
 
-    # Save results to JSON
-    all_results = {"text": text_results, "image": image_results}
-    with open(args.output, "w") as f:
+    # Save results to JSON with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = os.path.join(args.output_dir, f"report_{timestamp}.json")
+    all_results = {"text": text_results, "image": image_results, "timestamp": timestamp}
+    with open(output_path, "w") as f:
         json.dump(all_results, f, indent=2, default=str)
-    print(f"\n[Eval] Results saved to {args.output}")
+    print(f"\n[Eval] Results saved to {output_path}")
 
 
 if __name__ == "__main__":

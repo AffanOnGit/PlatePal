@@ -125,13 +125,20 @@ def format_recipe_for_training(row: pd.Series) -> str:
 def prepare_text_dataset(csv_path: str, output_path: str, subset_size: int = 20000):
     """
     Full pipeline: load CSV → filter → format → write training corpus.
+
+    Writes one formatted recipe per line in a plain .txt file.
+    Each line is a self-contained record delimited by <RECIPE_END>.
     """
     df = load_recipenlg(csv_path, subset_size)
     formatted = df.apply(format_recipe_for_training, axis=1)
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    formatted.to_csv(output_path, index=False, header=False)
-    print(f"[RecipeNLG] Training corpus written to {output_path}")
+    with open(output_path, "w", encoding="utf-8") as f:
+        for recipe_str in formatted:
+            # Collapse internal newlines so each recipe is exactly one line
+            clean = recipe_str.replace("\n", " ").replace("\r", " ").strip()
+            f.write(clean + "\n")
+    print(f"[RecipeNLG] Training corpus written to {output_path}  ({len(formatted):,} recipes)")
     return df
 
 
@@ -179,7 +186,7 @@ def normalize_images_for_gan(images: np.ndarray) -> np.ndarray:
 # 3. CAFD (Central Asian Food Dataset) Preprocessing
 # ─────────────────────────────────────────────────────────────────────
 
-def load_cafd_images(root_dir: str, target_size: tuple = (64, 64)):
+def load_cafd_images(root_dir: str, target_size: tuple = (128, 128)):
     """
     Load images from a folder-per-class directory structure.
 
@@ -189,7 +196,7 @@ def load_cafd_images(root_dir: str, target_size: tuple = (64, 64)):
 
     Returns:
         images: np.ndarray (N, H, W, 3)
-        labels: list[str]  class name per image
+        labels: np.ndarray of integer class indices (DataLoader-safe)
     """
     from PIL import Image as PILImage
 
@@ -197,23 +204,27 @@ def load_cafd_images(root_dir: str, target_size: tuple = (64, 64)):
     class_dirs = sorted([
         d for d in Path(root_dir).iterdir() if d.is_dir()
     ])
+    class_to_idx = {d.name: idx for idx, d in enumerate(class_dirs)}
 
     print(f"[CAFD] Found {len(class_dirs)} classes in {root_dir}")
 
     for cls_dir in class_dirs:
         cls_name = cls_dir.name
+        cls_idx = class_to_idx[cls_name]
         for img_path in cls_dir.glob("*"):
             if img_path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".bmp"}:
                 continue
             try:
                 img = PILImage.open(img_path).convert("RGB").resize(target_size)
                 images.append(np.array(img))
-                labels.append(cls_name)
+                labels.append(cls_idx)
             except Exception:
                 continue
 
     images = np.array(images)
+    labels = np.array(labels, dtype=np.int64)
     print(f"[CAFD] Loaded {len(images):,} images across {len(class_dirs)} classes")
+    print(f"[CAFD] Class mapping: { {v: k for k, v in list(class_to_idx.items())[:5]} }...")
     return images, labels
 
 
@@ -227,8 +238,8 @@ from torch.utils.data import Dataset
 
 class FoodImageDataset(Dataset):
     """
-    Generic dataset for 64x64 food images from any source (Food-101, CAFD).
-    Images are expected as np.ndarray (N, 64, 64, 3) in [0, 255].
+    Generic dataset for food images from any source (Food-101, CAFD).
+    Images are expected as np.ndarray (N, H, W, 3) in [0, 255].
     """
 
     def __init__(self, images: np.ndarray, labels=None, transform=None):
@@ -240,7 +251,7 @@ class FoodImageDataset(Dataset):
         return len(self.images)
 
     def __getitem__(self, idx):
-        img = self.images[idx]  # (64, 64, 3) uint8
+        img = self.images[idx]  # (H, W, 3) uint8
 
         if self.transform:
             from PIL import Image as PILImage
@@ -257,15 +268,23 @@ class FoodImageDataset(Dataset):
 class RecipeTextDataset(Dataset):
     """
     Dataset for loading pre-formatted recipe strings for GPT-2 fine-tuning.
+
+    Expects a .txt file with one formatted recipe per line.
+    Each line contains special tokens: <RECIPE_START>...<RECIPE_END>
     """
 
-    def __init__(self, corpus_path: str, tokenizer, max_length: int = 512):
+    def __init__(self, corpus_path: str, tokenizer, max_length: int = 512, max_samples: int = None):
         self.tokenizer = tokenizer
         self.max_length = max_length
 
         print(f"[RecipeTextDataset] Loading corpus from {corpus_path}...")
         with open(corpus_path, "r", encoding="utf-8") as f:
             self.recipes = [line.strip() for line in f if line.strip()]
+
+        if max_samples and len(self.recipes) > max_samples:
+            self.recipes = self.recipes[:max_samples]
+            print(f"[RecipeTextDataset] Capped to {max_samples:,} samples")
+
         print(f"[RecipeTextDataset] Loaded {len(self.recipes):,} recipes")
 
     def __len__(self):

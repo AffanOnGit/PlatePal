@@ -17,8 +17,6 @@ data/raw/
 data/processed/
 *.h5
 *.hdf5
-*.csv
-!requirements.txt
 
 # ─── Model Checkpoints ───
 checkpoints/
@@ -26,6 +24,9 @@ checkpoints/
 *.pt
 *.bin
 *.onnx
+
+# ─── Evaluation Reports ───
+evaluation/
 
 # ─── IDE ───
 .vscode/
