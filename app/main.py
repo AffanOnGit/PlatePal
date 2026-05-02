@@ -15,6 +15,7 @@ import os
 import base64
 import logging
 from io import BytesIO
+from dotenv import load_dotenv
 
 import torch
 import numpy as np
@@ -24,12 +25,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 
+# Load secrets from .env file
+load_dotenv()
+
 from app.models.text_gen import RecipeGenerator
+from app.models.text_gen_groq import GroqRecipeGenerator
 from app.models.image_gen import StableDiffusionGenerator
+from app.utils.recipe_db import get_pro_recipe
 
 # ─────────────────────────────────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────────────────────────────────
+
+# GROQ Support
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+groq_gen = GroqRecipeGenerator(GROQ_API_KEY) if GROQ_API_KEY else None
 
 TEXT_CHECKPOINT  = os.getenv("PLATEPAL_TEXT_CKPT",  "checkpoints/text_model/best")
 IMAGE_CHECKPOINT = os.getenv("PLATEPAL_IMG_CKPT",   "runwayml/stable-diffusion-v1-5")
@@ -67,11 +77,16 @@ _img_gen: StableDiffusionGenerator = None
 _embedder = None
 
 
-def get_recipe_gen() -> RecipeGenerator:
+def get_recipe_gen():
     global _recipe_gen
     if _recipe_gen is None:
-        ckpt = TEXT_CHECKPOINT if os.path.isdir(TEXT_CHECKPOINT) else None
-        _recipe_gen = RecipeGenerator(checkpoint_dir=ckpt, device=DEVICE)
+        if groq_gen:
+            print("[Text-Gen] Using High-Fidelity Groq Engine (Llama 3)")
+            _recipe_gen = groq_gen
+        else:
+            print("[Text-Gen] Using Local GPT-2 Engine (Fallback)")
+            ckpt = TEXT_CHECKPOINT if os.path.isdir(TEXT_CHECKPOINT) else None
+            _recipe_gen = RecipeGenerator(checkpoint_dir=ckpt, device=DEVICE)
     return _recipe_gen
 
 
@@ -142,46 +157,47 @@ def parse_recipe_sections(raw_text: str) -> StructuredRecipe:
     text = re.sub(r'\*{1,2}(.*?)\*{1,2}', r'\1', text)
     text = re.sub(r'^\s*[-*]\s+', '', text, flags=re.MULTILINE)
     
-    # Strip Technical Noise (hallucinated measurements/sequences like 1cm, 2nd, etc)
-    text = re.sub(r'\d+\s*(cm|mm|st|nd|rd|th)\b\.?', '', text)
-    text = re.sub(r'\n{3,}', '\n\n', text)
+    # 1. GLOBAL TAG STRIPPING
+    clean_text = re.sub(r'<[^>]+>', '', raw_text).strip()
+    
+    # 2. Initialize
+    title = ""
+    ingredients = ""
+    instructions = ""
 
-    title        = None
-    ingredients  = None
-    instructions = None
+    # Stage A: Tag-Based Splitting
+    if "<TITLE_START>" in raw_text:
+        title = raw_text.split("<TITLE_START>")[1].split("<INPUT_START>")[0].strip() if "<INPUT_START>" in raw_text else ""
+    if "<INPUT_START>" in raw_text:
+        ingredients = raw_text.split("<INPUT_START>")[1].split("<INSTR_START>")[0].strip() if "<INSTR_START>" in raw_text else ""
+    if "<INSTR_START>" in raw_text:
+        instructions = raw_text.split("<INSTR_START>")[1].strip()
 
-    if "<TITLE>" in text:
-        title_rest = text.split("<TITLE>", 1)[1]
-        if "<INPUT_START>" in title_rest:
-            title = title_rest.split("<INPUT_START>")[0].strip()
-        else:
-            title = title_rest.strip()
+    # --- TITLE GUARD ---
+    # If the title is giant (more than 60 chars), it's a mistake.
+    if len(title) > 60:
+        instructions = title + "\n" + instructions # Move it to instructions
+        title = "PlatePal Signature Dish" # Use default title
 
-    if "<INPUT_START>" in text:
-        ing_rest = text.split("<INPUT_START>", 1)[1]
-        if "<INSTR_START>" in ing_rest:
-            ingredients = ing_rest.split("<INSTR_START>")[0].strip()
-        else:
-            ingredients = ing_rest.strip()
+    # Stage B: Keyword Fallback
+    if not instructions or len(instructions) < 10:
+        instructions = clean_text
 
-    if "<INSTR_START>" in text:
-        instructions = text.split("<INSTR_START>", 1)[1].strip()
-
-    # Smart title fallback: build a name from the first ingredient
-    if not title or len(title) < 3:
-        # Pull first ingredient word and title-case it
-        title = "PlatePal Signature Dish"
-
-    # Clean up the title
-    title = title.strip().strip('"').strip("'")
-    if title and not title[0].isupper():
-        title = title.title()
+    # Final Formatting
+    if not title or len(title) < 3: title = "PlatePal Signature Dish"
+    if not ingredients: ingredients = "Hand-selected ingredients"
+    
+    # Ensure "Step One", "Step Two" are on new lines
+    if instructions:
+        instructions = re.sub(r'(Step (One|Two|Three|Four|Five|Six)|Step \d+:?|\d+\.)', r'\n\1', instructions, flags=re.IGNORECASE)
+        if "\n" not in instructions:
+            instructions = instructions.replace(". ", ".\n\n")
 
     return StructuredRecipe(
-        title=title or "PlatePal Signature Dish",
-        ingredients=ingredients or "See instructions below",
-        instructions=instructions or text.strip(),
-        raw=text.strip(),
+        title=title.split("\n")[0].strip().title(),
+        ingredients=ingredients,
+        instructions=instructions,
+        raw=raw_text
     )
 
 
@@ -243,16 +259,26 @@ async def generate(request: IngredientRequest):
 
         logger.info(f"Generating for: {ingredients}")
 
-        # ── Step 1: Recipe Generation ──────────────────────────────
-        recipe_gen = get_recipe_gen()
-        raw_recipe = recipe_gen.generate_recipe(
-            ingredients,
-            max_length=request.max_length,
-            temperature=request.temperature,
-        )
-
-        # ── Step 2: Parse into structured sections ─────────────────
-        structured = parse_recipe_sections(raw_recipe)
+        # ── Step 1 & 2: Recipe Generation & Parsing ────────────────
+        # CHECK DATABASE FIRST (Chef Override)
+        pro_recipe = get_pro_recipe(ingredients)
+        
+        if pro_recipe:
+            structured = StructuredRecipe(
+                title=pro_recipe["title"],
+                ingredients=pro_recipe["ingredients"],
+                instructions=pro_recipe["instructions"],
+                raw=""
+            )
+        else:
+            # FALLBACK TO AI
+            recipe_gen = get_recipe_gen()
+            raw_recipe = recipe_gen.generate_recipe(
+                ingredients,
+                max_length=request.max_length,
+                temperature=0.5,
+            )
+            structured = parse_recipe_sections(raw_recipe)
 
         # ── Step 3: Image Synthesis (Stable Diffusion) ─────────────
         img_b64 = generate_plating_image(structured.title, ingredients)

@@ -7,6 +7,11 @@ dist/
 build/
 *.egg
 
+# ─── Environment ───
+.env
+.env.local
+.env.*
+
 # ─── Virtual Environments ───
 venv/
 env/

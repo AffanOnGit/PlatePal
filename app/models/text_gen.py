@@ -79,79 +79,46 @@ class RecipeGenerator:
         Returns:
             Decoded recipe string (with special tokens stripped for display).
         """
-        prompt = f"<RECIPE_START><INPUT_START>{ingredients}<INSTR_START>"
+        # Start with TITLE_START so it generates a name first
+        prompt = f"<RECIPE_START><TITLE_START>"
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        
+        # We also want to provide the ingredients as context
+        # But for this model's specific training, we usually do:
+        # <RECIPE_START><INPUT_START>ingredients<TITLE_START>
+        prompt = f"<RECIPE_START><INPUT_START>{ingredients}<TITLE_START>"
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
 
         with torch.no_grad():
             outputs = self.model.generate(
                 input_ids=inputs["input_ids"],
                 attention_mask=inputs["attention_mask"],
-                max_length=max_length,
+                max_length=150,           # Shorter is safer
                 num_return_sequences=num_return,
                 no_repeat_ngram_size=3,
+                repetition_penalty=1.6,   # Stronger penalty for nonsense
                 do_sample=True,
-                top_k=top_k,
-                top_p=top_p,
-                temperature=temperature,
+                top_k=40,
+                top_p=0.85,               # More focused sampling
+                temperature=0.4,          # Even colder for less "creativity"
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id,
             )
 
         raw = self.tokenizer.decode(outputs[0], skip_special_tokens=False)
-        return self._format_output(raw)
+        
+        # Strip out any random Unicode/garbage characters like \UooB
+        raw = "".join(i for i in raw if ord(i) < 128)
+        
+        # --- RAMBLING FILTER ---
+        # If the AI starts talking about things that aren't cooking, cut it off.
+        nonsense_keywords = ["Christmas", "Holiday", "Interview", "Post", "Blog", "Author", "Subscribe", "Email", "Thai", "Japan", "Visit"]
+        for word in nonsense_keywords:
+            if word in raw:
+                raw = raw.split(word)[0]
+        
+        # If it generated an <|endoftext|> token, stop there
+        if "<|endoftext|>" in raw:
+            raw = raw.split("<|endoftext|>")[0]
 
-    # ─────────────────────────────────────────────────────────────
-    # Output Formatting
-    # ─────────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _format_output(raw: str) -> str:
-        """
-        Clean the raw model output into a human-readable recipe card.
-        """
-        # Remove leading/trailing control tokens
-        text = raw
-        for token in ["<RECIPE_START>", "<RECIPE_END>", "<PAD>"]:
-            text = text.replace(token, "")
-
-        # Split into sections
-        parts = {}
-        if "<TITLE>" in text:
-            title_rest = text.split("<TITLE>", 1)[1]
-            if "<INPUT_START>" in title_rest:
-                parts["title"] = title_rest.split("<INPUT_START>")[0].strip()
-            else:
-                parts["title"] = title_rest.strip()
-
-        if "<INPUT_START>" in text:
-            ing_rest = text.split("<INPUT_START>", 1)[1]
-            if "<INSTR_START>" in ing_rest:
-                parts["ingredients"] = ing_rest.split("<INSTR_START>")[0].strip()
-            else:
-                parts["ingredients"] = ing_rest.strip()
-
-        if "<INSTR_START>" in text:
-            parts["instructions"] = text.split("<INSTR_START>", 1)[1].strip()
-
-        # Build formatted output
-        lines = []
-        if "title" in parts:
-            lines.append(f"# {parts['title']}\n")
-        if "ingredients" in parts:
-            lines.append("## Ingredients")
-            for ing in parts["ingredients"].split(","):
-                ing = ing.strip()
-                if ing:
-                    lines.append(f"- {ing}")
-            lines.append("")
-        if "instructions" in parts:
-            lines.append("## Instructions")
-            lines.append(parts["instructions"])
-
-        return "\n".join(lines) if lines else text
-
-
-if __name__ == "__main__":
-    gen = RecipeGenerator(device="cpu")
-    result = gen.generate_recipe("chicken, rice, spinach, garlic, lemon")
-    print(result)
+        return raw

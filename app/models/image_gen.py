@@ -28,12 +28,16 @@ class StableDiffusionGenerator:
         
         print("[SD-Generator] Model ready. Loading Food LoRA...")
         
-        # Load a specialized Food Photography LoRA for professional textures
+        # Load YOUR Custom-Trained Food LoRA
+        local_lora = "checkpoints/food_lora"
         try:
-            self.pipe.load_lora_weights("CiroN2022/food-photography", weight_name="food_photography_v1.safetensors")
-            print("[SD-Generator] Food LoRA active.")
+            if os.path.exists(local_lora):
+                self.pipe.load_lora_weights(local_lora)
+                print(f"[SD-Generator] SUCCESS: Custom PlatePal LoRA Active.")
+            else:
+                print(f"[SD-Generator] Warning: Local LoRA not found at {local_lora}. Using base model.")
         except Exception as e:
-            print(f"[SD-Generator] Warning: Could not load LoRA ({e}). Using base model.")
+            print(f"[SD-Generator] Error loading custom LoRA: {e}")
 
     def generate(self, dish_name: str, ingredients: str) -> Image:
         """
