@@ -1,0 +1,47 @@
+# ─── Python ───
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ─── Virtual Environments ───
+venv/
+env/
+.env/
+
+# ─── Data (large files) ───
+data/raw/
+data/processed/
+*.h5
+*.hdf5
+*.csv
+!requirements.txt
+
+# ─── Model Checkpoints ───
+checkpoints/
+*.pth
+*.pt
+*.bin
+*.onnx
+
+# ─── IDE ───
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── OS ───
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Jupyter ───
+.ipynb_checkpoints/
+
+# ─── Misc ───
+*.log
+extract_pdf.py
+read_pdf.py
