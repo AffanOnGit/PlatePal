@@ -68,7 +68,10 @@ class SemanticRecipeRetriever:
         if not self._load():
             return ""
 
+        # 1. Embed query
         query_vec = self.model.encode([ingredients_str]).astype('float32')
+        
+        # 2. Search FAISS
         distances, indices = self.index.search(query_vec, top_k)
         
         context = "--- REAL RECIPE CONTEXT FROM DATABASE ---\n"

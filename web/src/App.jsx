@@ -66,19 +66,45 @@ function App() {
               <h2 className="recipe-title">{recipe.recipe.title}</h2>
               
               <div className="section">
-                <h3>Ingredients</h3>
-                <div className="ingredient-list">
-                  {recipe.recipe.ingredients.split(',').map((ing, i) => (
-                    <span key={i} className="ing-tag">{ing.trim()}</span>
-                  ))}
+                <h4 className="section-label">Ingredients</h4>
+                <div className="ingredients-list">
+                  {(() => {
+                    let ings = recipe.recipe.ingredients;
+                    try {
+                      // Handle JSON array strings if they exist
+                      if (typeof ings === 'string' && (ings.startsWith('[') || ings.includes('","'))) {
+                        ings = JSON.parse(ings.replace(/'/g, '"'));
+                      }
+                    } catch (e) { ings = recipe.recipe.ingredients.split(','); }
+                    
+                    const ingArray = Array.isArray(ings) ? ings : recipe.recipe.ingredients.split(',');
+                    return ingArray.map((ing, i) => (
+                      <span key={i} className="ingredient-tag">{ing.trim().replace(/^"|"$/g, '')}</span>
+                    ));
+                  })()}
                 </div>
               </div>
 
               <div className="section">
-                <h3>Instructions</h3>
-                <p className="instructions-text">
-                  {recipe.recipe.instructions}
-                </p>
+                <h4 className="section-label">Culinary Instructions</h4>
+                <div className="instructions-container">
+                  {(() => {
+                    let inst = recipe.recipe.instructions;
+                    try {
+                      if (typeof inst === 'string' && inst.startsWith('[')) {
+                        inst = JSON.parse(inst.replace(/'/g, '"'));
+                      }
+                    } catch (e) { inst = [recipe.recipe.instructions]; }
+
+                    const instArray = Array.isArray(inst) ? inst : [recipe.recipe.instructions];
+                    return instArray.map((step, i) => (
+                      <div key={i} className="instruction-step">
+                        <span className="step-num">{i + 1}</span>
+                        <p className="step-text">{step.trim().replace(/^"|"$/g, '')}</p>
+                      </div>
+                    ));
+                  })()}
+                </div>
               </div>
             </div>
 
@@ -254,17 +280,33 @@ function App() {
           color: black;
         }
 
-        .instructions-text {
-          font-size: 1.1rem;
-          line-height: 1.8; /* More space for easier reading */
-          color: #ccc;
-          white-space: pre-line;
+        .instruction-step {
+          display: flex;
+          gap: 1.5rem;
+          margin-bottom: 1.5rem;
+          align-items: flex-start;
+          animation: fadeIn 0.5s ease forwards;
+        }
+        
+        .step-num {
+          background: var(--accent);
+          color: black;
+          font-weight: 700;
+          min-width: 28px;
+          height: 28px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 50%;
+          font-size: 0.8rem;
+          margin-top: 0.2rem;
         }
 
-        .instructions-text b {
-          color: var(--primary);
-          display: block;
-          margin-top: 1.5rem;
+        .step-text {
+          font-size: 1.05rem;
+          line-height: 1.7;
+          color: #ccc;
+          margin: 0;
         }
 
         .plate-container {
