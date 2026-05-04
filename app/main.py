@@ -31,7 +31,7 @@ load_dotenv()
 from app.models.text_gen import RecipeGenerator
 from app.models.text_gen_groq import GroqRecipeGenerator
 from app.models.image_gen import StableDiffusionGenerator
-from app.utils.recipe_db import get_pro_recipe
+from app.utils.recipe_db import get_pro_recipe, get_semantic_context
 
 # ─────────────────────────────────────────────────────────────────────
 # Config
@@ -271,10 +271,15 @@ async def generate(request: IngredientRequest):
                 raw=""
             )
         else:
-            # FALLBACK TO AI
+            # FALLBACK TO AI (WITH SEMANTIC RAG)
             recipe_gen = get_recipe_gen()
+            
+            # Retrieve real-world context for Llama 3
+            rag_context = get_semantic_context(ingredients)
+            
             raw_recipe = recipe_gen.generate_recipe(
                 ingredients,
+                context=rag_context,
                 max_length=request.max_length,
                 temperature=0.5,
             )

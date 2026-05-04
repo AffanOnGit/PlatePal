@@ -10,15 +10,26 @@ class GroqRecipeGenerator:
         self.client = Groq(api_key=api_key)
         self.model = "llama-3.3-70b-versatile" # Updated to latest supported model
 
-    def generate_recipe(self, ingredients: str, max_length: int = 512, temperature: float = 0.5) -> str:
+    def generate_recipe(self, ingredients: str, context: str = "", max_length: int = 512, temperature: float = 0.5) -> str:
         """
         Generates a professional recipe using Llama 3 via Groq.
-        Formats the output specifically for the PlatePal parser.
+        Augments the prompt with Semantic RAG context if provided.
         """
         system_prompt = (
             "You are a Michelin-star Executive Chef. "
             "Generate a structured recipe based on the provided ingredients. "
-            "You MUST use this exact format:\n"
+        )
+        
+        if context:
+            system_prompt += (
+                "\nUSE THE FOLLOWING REAL RECIPES AS TECHNICAL CONTEXT:\n"
+                f"{context}\n"
+                "\nINSTRUCTIONS: If the context recipes are relevant, use their flavor profiles "
+                "and culinary techniques. If they are not relevant, use your own expertise. "
+            )
+
+        system_prompt += (
+            "\nYou MUST use this exact format:\n"
             "<TITLE_START> [Dish Name] <INPUT_START> [Ingredients List] <INSTR_START> [Step-by-step instructions]\n"
             "Keep the tone professional, concise, and focused on high-end plating."
         )
