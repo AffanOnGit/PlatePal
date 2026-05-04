@@ -1,150 +1,78 @@
-# PlatePal: AI-Powered Recipe & Plating Visual Generator
-
-> **SE-B | i22582, i221513**
-> Neural Recipe Generation + Conditional Image Synthesis
+# PlatePal: AI-Powered Gastronomy & Visual Plating
+> **SE-B | i22582, i221513**  
+> A Hybrid-SOTA Pipeline for Neural Recipe Generation & Conditional Image Synthesis.
 
 ---
 
-## 🧠 Architecture Overview
+## 🧠 System Architecture: The Triple-Model Pipeline
+PlatePal has transitioned from a baseline DCGAN/GPT-2 setup to a professional-grade GenAI architecture designed for high-fidelity culinary outputs.
 
-PlatePal combines two generative pipelines:
-
-| Component | Model | Purpose |
-|-----------|-------|---------|
-| **Text Generation** | Fine-tuned DistilGPT-2 (124M params) | Structured recipe generation from ingredients |
-| **Image Synthesis** | Conditional DCGAN (64→256px) | Food plating visualization from recipe text |
-| **Semantic Bridge** | OpenAI CLIP (ViT-B/32) | Text→embedding conditioning for the GAN |
+| Layer | Technology | Purpose |
+| :--- | :--- | :--- |
+| **Knowledge (RAG)** | **FAISS** + `all-MiniLM-L6-v2` | Semantic search over 20k recipes to ground AI in real data. |
+| **Intelligence (LLM)** | **Llama-3.3-70B** (via Groq) | Context-aware reasoning and technical recipe synthesis. |
+| **Aesthetics (Diffusion)** | **Stable Diffusion v1.5** + **LoRA** | Photorealistic food plating visuals with regional fine-tuning. |
 
 ---
 
 ## 📂 Project Structure
-
-```
+```text
 PlatePal/
-├── app/                          # Core application
-│   ├── main.py                   # FastAPI backend (endpoints)
+├── app/                          # Core backend (FastAPI)
+│   ├── main.py                   # API Orchestration
 │   ├── models/
-│   │   ├── text_gen.py           # RecipeGenerator (GPT-2)
-│   │   └── image_gen.py          # Generator + Discriminator (DCGAN)
+│   │   ├── text_gen_groq.py      # Llama-3.3 / Groq Integration
+│   │   └── image_gen.py          # SD v1.5 + Custom LoRA
 │   └── utils/
-│       ├── data_preprocessing.py # Dataset loading & formatting
-│       ├── clip_embedder.py      # CLIP embedding extraction
-│       └── evaluation.py         # Perplexity, BLEU, ROUGE, FID
-├── frontend/
-│   └── app.py                    # Streamlit UI
-├── train_text_model.py           # GPT-2 fine-tuning script
-├── train_image_model.py          # DCGAN training script
-├── run_evaluation.py             # Evaluation metrics runner
-├── download_datasets.py          # Dataset acquisition helper
-├── requirements.txt              # Python dependencies
-└── README.md
+│       ├── recipe_db.py          # Semantic RAG Engine (FAISS)
+│       └── data_preprocessing.py # Dataset ETL (RecipeNLG / CAFD)
+├── web/                          # Modern Frontend (React + Vite)
+├── scripts/                      # Indexing & Testing utilities
+│   ├── build_rag_index.py        # Vector indexing for 20k recipes
+│   └── test_rag.py               # RAG retrieval validation
+├── VIVA_PREP_GUIDE.md            # Technical & Mathematical deep-dive
+├── PROJECT_MODULE_DIVISION.md    # Group partner role breakdown
+└── requirements.txt              # Standardized GenAI stack
 ```
 
 ---
 
-## 🚀 Quick Start
-
-### 1. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-pip install git+https://github.com/openai/CLIP.git
-```
-
-### 2. Download Datasets
-
-```bash
-python download_datasets.py --all
-```
-
-| Dataset | Size | Source |
-|---------|------|--------|
-| RecipeNLG | ~2.2M recipes | [Kaggle](https://www.kaggle.com/datasets/paultimothymooney/recipenlg) |
-| Food-101 | ~11K images (64x64) | [ETH Zurich](https://data.vision.ee.ethz.ch/cvl/food-101.tar.gz) |
-| CAFD | ~16.5K images (42 classes) | Kaggle |
-
-### 3. Preprocess Text Data
-
-```bash
-python -m app.utils.data_preprocessing \
-    --recipe-csv data/raw/RecipeNLG_dataset.csv \
-    --output-dir data/processed
-```
-
-### 4. Train Models
-
-**Text Model (GPT-2):**
-```bash
-python train_text_model.py \
-    --corpus data/processed/recipes_train.csv \
-    --output checkpoints/text_model \
-    --epochs 5 --batch-size 32 --lr 2e-4 --fp16
-```
-
-**Image Model (DCGAN):**
-```bash
-python train_image_model.py \
-    --food101-h5 data/raw/food_c101_n10099_r64x64x3.h5 \
-    --cafd-dir data/raw/CAFD \
-    --output checkpoints/dcgan \
-    --epochs 200 --batch-size 128 --fp16
-```
-
-### 5. Run the Application
-
-```bash
-# Terminal 1: Backend
-uvicorn app.main:app --reload --port 8000
-
-# Terminal 2: Frontend
-streamlit run frontend/app.py
-```
-
-### 6. Evaluate
-
-```bash
-python run_evaluation.py \
-    --text-model checkpoints/text_model/best \
-    --image-model checkpoints/dcgan/generator_final.pth
-```
+## 🚀 The Technical Workflow
+1.  **User Input**: Receives raw ingredients (unstructured text).
+2.  **Retrieval**: The **Semantic RAG** engine converts input into a vector and searches the **FAISS** index for the 3 most relevant professional recipes.
+3.  **Augmentation**: These recipes are injected into the **Llama-3.3** system prompt as technical context.
+4.  **Generation (Text)**: The LLM synthesizes a structured recipe, constrained by low-temperature sampling ($\tau = 0.3$) for accuracy.
+5.  **Generation (Image)**: The dish title is passed to the **Stable Diffusion** pipeline.
+6.  **Style Injection**: A custom **LoRA (Low-Rank Adaptation)** layer activates, applying specific "South Asian" plating textures learned from the CAFD dataset.
 
 ---
 
-## 📊 Evaluation Metrics
-
-| Metric | Type | Target |
-|--------|------|--------|
-| **Perplexity** | Text (fluency) | Lower is better |
-| **BLEU-4** | Text (n-gram overlap) | Higher is better |
-| **ROUGE-L** | Text (sequential logic) | Higher is better |
-| **Ingredient Coverage** | Text (completeness) | ≥ 80% |
-| **FID** | Image (distribution quality) | Lower is better |
+## 🛠️ Advanced GenAI Concepts Applied
+*   **RAG (Retrieval-Augmented Generation)**: Mitigates LLM hallucinations by providing real-world culinary "ground truth."
+*   **PEFT (Parameter-Efficient Fine-Tuning)**: Uses LoRA to adapt a 800M+ parameter model using only 16MB adapters.
+*   **Classifier-Free Guidance (CFG)**: Steers the diffusion process to match the recipe prompt while filtering for high-end aesthetics.
+*   **Semantic Search**: Uses L2-distance in high-dimensional vector space to find matches based on *meaning* rather than exact keywords.
 
 ---
 
-## ⚙️ Hardware Recommendations
-
-Optimized for **NVIDIA RTX 5060 Ti (16GB)**:
-
-- DCGAN batch size: `128`
-- Transformer batch size: `32`
-- Mixed precision (FP16): enabled via `--fp16`
-- Dataset format: HDF5 for zero-overhead loading
+## 📦 Setup & Installation
+1.  **Environment**: Create a virtual env and run `pip install -r requirements.txt`.
+2.  **Keys**: Copy `.env.example` to `.env` and add your `GROQ_API_KEY`.
+3.  **Index**: Run `python scripts/build_rag_index.py` to prepare the RAG memory.
+4.  **Run**:
+    ```bash
+    # Terminal 1: Backend
+    uvicorn app.main:app --reload
+    
+    # Terminal 2: Frontend
+    cd web && npm run dev
+    ```
 
 ---
 
-## 🔧 API Endpoints
+## 📊 Evaluation & Metrics
+*   **Text**: Perplexity (fluency), BLEU-4 (overlap), and Ingredient Coverage.
+*   **Image**: **FID (Fréchet Inception Distance)** to measure the similarity between generated plates and real professional food photography.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/` | Health check |
-| `POST` | `/generate` | Full pipeline (recipe + image) |
-| `POST` | `/generate/text` | Recipe generation only |
-| `POST` | `/generate/image` | Image generation only |
-
-**Example request:**
-```bash
-curl -X POST http://localhost:8000/generate \
-  -H "Content-Type: application/json" \
-  -d '{"ingredients": "chicken, rice, garlic, cumin"}'
-```
+---
+**PlatePal v3.0 | Optimized for RTX 5060 Ti | GenAI Assignment #3**

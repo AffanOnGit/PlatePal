@@ -4,11 +4,20 @@ torchvision>=0.15.0
 torchaudio>=2.0.0
 transformers>=4.30.0
 
-# ─── API & Frontend ───
+# ─── GenAI Stack (Stable Diffusion & LoRA) ───
+diffusers>=0.21.0
+accelerate>=0.22.0
+peft>=0.5.0
+bitsandbytes>=0.41.0
+sentence-transformers>=2.2.2
+faiss-cpu>=1.7.4
+groq>=0.1.0
+
+# ─── API & Web ───
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
-streamlit>=1.25.0
 python-multipart>=0.0.6
+python-dotenv>=1.0.0
 
 # ─── Data Processing ───
 h5py>=3.9.0
@@ -20,18 +29,13 @@ scikit-learn>=1.3.0
 # ─── Visualization & Evaluation ───
 matplotlib>=3.7.0
 scipy>=1.11.0
+tqdm>=4.65.0
 
 # ─── CLIP Dependencies ───
 ftfy>=6.1.0
 regex>=2023.6.3
-
-# ─── Training Utilities ───
-tqdm>=4.65.0
-
-# ─── Utilities ───
 requests>=2.31.0
 pydantic>=2.0.0
 
-# ─── CLIP (install AFTER the above) ───
-# Installed automatically by setup_env.bat:
-#   pip install git+https://github.com/openai/CLIP.git
+# --- Note: Install CLIP manually or via setup script ---
+# pip install git+https://github.com/openai/CLIP.git
