@@ -21,7 +21,7 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.post('https://nl2hpvd3-8000.inc1.devtunnels.ms/generate', {
+      const response = await axios.post('https://nl2hpvd3-8000.inc1.devtunnels.ms/8000/generate', {
         ingredients: ingredients
       });
       setRecipe(response.data);
