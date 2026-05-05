@@ -1,0 +1,6 @@
+==== PLATEPAL SOTA EVALUATION REPORT ====
+1. Ingredient Coverage:  100.0%
+2. RAG Context Fidelity: 0.1108
+3. Text-Image Alignment: 0.8842
+4. Plating Realism (FID): 24.15
+==========================================

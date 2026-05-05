@@ -6,9 +6,13 @@ class GroqRecipeGenerator:
     High-fidelity recipe generation using the Groq API.
     Replaces hallucinating local models with industry-standard LLMs.
     """
-    def __init__(self, api_key: str):
-        self.client = Groq(api_key=api_key)
-        self.model = "llama-3.3-70b-versatile" # Updated to latest supported model
+    def __init__(self, api_key: str = None):
+        self.api_key = api_key or os.getenv("GROQ_API_KEY")
+        if not self.api_key:
+            print("[Warning] GROQ_API_KEY not found. LLM generation will fail.")
+        
+        self.client = Groq(api_key=self.api_key) if self.api_key else None
+        self.model = "llama-3.3-70b-versatile"
 
     def generate_recipe(self, ingredients: str, context: str = "", max_length: int = 512, temperature: float = 0.5) -> str:
         """
@@ -33,6 +37,9 @@ class GroqRecipeGenerator:
             "<TITLE_START> [Dish Name] <INPUT_START> [Ingredients List] <INSTR_START> [Step-by-step instructions]\n"
             "Keep the tone professional, concise, and focused on high-end plating."
         )
+
+        if not self.client:
+            return "<TITLE_START> API Key Error <INPUT_START> N/A <INSTR_START> Please set your GROQ_API_KEY in the .env file to enable recipe generation."
 
         try:
             chat_completion = self.client.chat.completions.create(
